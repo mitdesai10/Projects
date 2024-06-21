@@ -1,1 +1,88 @@
+-- Database from kaggle--
+-- Here is the link- https://www.kaggle.com/datasets/ddosad/ecommerce-customer-service-satisfaction
 
+CREATE DATABASE customer_support_db;
+USE customer_support_db;
+
+LOAD DATA INFILE '/path/to/Customer_support_data.csv'
+INTO TABLE customer_support
+FIELDS TERMINATED BY ',' 
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS
+(unique_id, channel_name, category, sub_category, customer_remarks, order_id, order_date_time, issue_reported_at, issue_responded, survey_response_date, customer_city, product_category, item_price, connected_handling_time, agent_name, supervisor, manager, tenure_bucket, agent_shift, csat_score);
+
+-- 1. Comprehensive agent performance and customer satisfaction report
+
+SELECT 
+    a.agent_name,
+    a.total_issues,
+    a.avg_csat_score,
+    b.avg_response_time,
+    c.issues_resolved_within_hour,
+    a.morning_shift_issues,
+    a.evening_shift_issues
+FROM 
+    (SELECT 
+        `Agent_name` AS agent_name,
+        COUNT(*) AS total_issues,
+        AVG(`CSAT Score`) AS avg_csat_score,
+        SUM(CASE WHEN `Agent Shift` = 'Morning' THEN 1 ELSE 0 END) AS morning_shift_issues,
+        SUM(CASE WHEN `Agent Shift` = 'Evening' THEN 1 ELSE 0 END) AS evening_shift_issues
+    FROM 
+        customer_support_data
+    GROUP BY 
+        `Agent_name`
+    ) AS a
+JOIN 
+    (SELECT 
+        `Agent_name`,
+        AVG(TIMESTAMPDIFF(MINUTE, STR_TO_DATE(`Issue_reported at`, '%d/%m/%Y %H:%i'), STR_TO_DATE(issue_responded, '%d/%m/%Y %H:%i'))) AS avg_response_time
+    FROM 
+        customer_support_data
+    GROUP BY 
+        `Agent_name`
+    ) AS b
+ON 
+    a.agent_name = b.agent_name
+JOIN 
+    (SELECT 
+        `Agent_name`,
+        (SUM(CASE WHEN TIMESTAMPDIFF(MINUTE, STR_TO_DATE(`Issue_reported at`, '%d/%m/%Y %H:%i'), STR_TO_DATE(issue_responded, '%d/%m/%Y %H:%i')) <= 60 THEN 1 ELSE 0 END) / COUNT(*)) * 100 AS issues_resolved_within_hour
+    FROM 
+        customer_support_data
+    GROUP BY 
+        `Agent_name`
+    ) AS c
+ON 
+    a.agent_name = c.agent_name
+ORDER BY 
+    a.total_issues DESC, 
+    a.avg_csat_score DESC;
+
+-- 2. Most common issue reported
+
+SELECT category, Sub-category, COUNT(*) AS issue_count
+FROM customer_support
+GROUP BY category, Sub-category
+ORDER BY issue_count DESC;
+
+-- 3. Average handling time
+
+SELECT Agent_name, AVG(connected_handling_time) AS avg_handling_time
+FROM customer_support
+GROUP BY Agent_name;
+
+-- 4. Top performing agents
+
+SELECT Agent_name, AVG(CSAT_Score) AS avg_csat
+FROM customer_support
+GROUP BY Agent_name
+ORDER BY avg_csat DESC
+LIMIT 5;
+
+-- 5. Issues by product category
+
+SELECT Product_category, COUNT(*) AS issue_count
+FROM customer_support
+GROUP BY Product_category;
